@@ -11,7 +11,7 @@ import java.util.Map;
 
 /**
  * 可视化数据控制器
- * 提供原噬菌体识别结果的可视化数据
+ * 提供抗性基因（ARG）识别结果的可视化数据
  */
 @Slf4j
 @RestController
@@ -23,10 +23,7 @@ public class VisualizationController {
     private final JwtUtil jwtUtil;
 
     /**
-     * 获取基因组可视化数据
-     * @param taskId 任务ID
-     * @param token JWT token
-     * @return 包含基因组序列和原噬菌体区域的可视化数据
+     * 获取 ARG 可视化数据
      */
     @GetMapping("/genome/{taskId}")
     public Result<Map<String, Object>> getGenomeVisualization(
@@ -37,38 +34,13 @@ public class VisualizationController {
             Map<String, Object> data = visualizationService.getGenomeVisualization(taskId, userId);
             return Result.success(data);
         } catch (Exception e) {
-            log.error("获取基因组可视化数据失败", e);
+            log.error("获取可视化数据失败", e);
             return Result.error("获取可视化数据失败: " + e.getMessage());
         }
     }
 
     /**
-     * 获取原噬菌体区域详情
-     * @param taskId 任务ID
-     * @param regionId 区域ID
-     * @param token JWT token
-     * @return 原噬菌体区域的详细信息
-     */
-    @GetMapping("/prophage/{taskId}/{regionId}")
-    public Result<Map<String, Object>> getProphageDetail(
-            @PathVariable Long taskId,
-            @PathVariable Long regionId,
-            @RequestHeader("Authorization") String token) {
-        try {
-            Long userId = jwtUtil.getUserIdFromToken(token.replace("Bearer ", ""));
-            Map<String, Object> detail = visualizationService.getProphageDetail(taskId, regionId, userId);
-            return Result.success(detail);
-        } catch (Exception e) {
-            log.error("获取原噬菌体详情失败", e);
-            return Result.error("获取详情失败: " + e.getMessage());
-        }
-    }
-
-    /**
      * 获取统计图表数据
-     * @param taskId 任务ID
-     * @param token JWT token
-     * @return ECharts 格式的统计数据
      */
     @GetMapping("/statistics/{taskId}")
     public Result<Map<String, Object>> getStatistics(
@@ -85,10 +57,7 @@ public class VisualizationController {
     }
 
     /**
-     * 导出可视化数据（JSON格式）
-     * @param taskId 任务ID
-     * @param token JWT token
-     * @return 完整的可视化数据
+     * 导出可视化数据
      */
     @GetMapping("/export/{taskId}")
     public Result<Map<String, Object>> exportVisualizationData(
@@ -104,4 +73,3 @@ public class VisualizationController {
         }
     }
 }
-

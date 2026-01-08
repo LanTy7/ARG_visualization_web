@@ -4,21 +4,20 @@
       <template #header>
         <div class="card-header">
           <span>分析任务历史</span>
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div class="header-actions">
             <el-input
               v-model="searchKeyword"
-              placeholder="搜索任务ID、文件ID或文件名"
-              style="width: 300px;"
+              placeholder="搜索任务ID或文件名"
+              style="width: 280px;"
               clearable
-              @keyup.enter="handleSearchTasks"
+              @keyup.enter="handleSearch"
               @clear="refreshTasks"
             >
               <template #prefix>
                 <el-icon><Search /></el-icon>
               </template>
             </el-input>
-            <el-button type="primary" @click="handleSearchTasks" :loading="loading">
-              <el-icon><Search /></el-icon>
+            <el-button type="primary" @click="handleSearch" :loading="loading">
               搜索
             </el-button>
             <el-button type="primary" link @click="refreshTasks" :loading="loading">
@@ -31,29 +30,24 @@
       
       <el-table :data="paginatedTasks" v-loading="loading">
         <el-table-column type="expand">
-          <template #default="{ row, $index }">
+          <template #default="{ row }">
             <div class="expand-content">
               <el-descriptions :column="2" border>
-                <el-descriptions-item label="任务">{{ pagination.total - ((pagination.current - 1) * pagination.pageSize + $index) }}</el-descriptions-item>
                 <el-descriptions-item label="文件ID">{{ row.fileId }}</el-descriptions-item>
                 <el-descriptions-item label="创建时间">{{ formatDate(row.createdAt) }}</el-descriptions-item>
                 <el-descriptions-item label="开始时间">{{ formatDate(row.startedAt) }}</el-descriptions-item>
                 <el-descriptions-item label="完成时间">{{ formatDate(row.completedAt) }}</el-descriptions-item>
                 <el-descriptions-item label="运行时长">{{ formatDuration(row.startedAt, row.completedAt) }}</el-descriptions-item>
-                <el-descriptions-item label="错误信息" :span="2" v-if="row.errorMessage">
-                  <el-text>文件格式错误：无法解析基因组序列</el-text>
+                <el-descriptions-item label="错误信息" v-if="row.errorMessage">
+                  <el-text type="danger">{{ row.errorMessage }}</el-text>
                 </el-descriptions-item>
               </el-descriptions>
             </div>
           </template>
         </el-table-column>
         
-        <el-table-column label="任务" width="100">
-          <template #default="{ $index }">
-            {{ pagination.total - ((pagination.current - 1) * pagination.pageSize + $index) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="fileName" label="文件名" min-width="200" />
+        <el-table-column label="任务ID" width="100" prop="taskId" />
+        <el-table-column prop="fileName" label="文件名" min-width="200" show-overflow-tooltip />
         <el-table-column label="状态" width="120">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">
@@ -76,7 +70,7 @@
             {{ formatDate(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280">
+        <el-table-column label="操作" width="240">
           <template #default="{ row }">
             <el-button
               v-if="row.status === 'COMPLETED'"
@@ -134,135 +128,81 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { Refresh, Search } from '@element-plus/icons-vue';
-import { getUserTasks, cancelTask, deleteTask, createTask } from '@/api/task';
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Search } from '@element-plus/icons-vue'
+import { getUserTasks, cancelTask, deleteTask, createTask } from '@/api/task'
 
-const router = useRouter();
+const router = useRouter()
 
-const loading = ref(false);
-const tasks = ref([]);
-const searchKeyword = ref('');
+const loading = ref(false)
+const tasks = ref([])
+const searchKeyword = ref('')
+let refreshTimer = null
 
 const pagination = reactive({
   current: 1,
   pageSize: 10,
-  total: 0,
-});
+  total: 0
+})
 
 // 计算当前页的数据
 const paginatedTasks = computed(() => {
-  const start = (pagination.current - 1) * pagination.pageSize;
-  const end = start + pagination.pageSize;
-  return tasks.value.slice(start, end);
-});
+  const start = (pagination.current - 1) * pagination.pageSize
+  const end = start + pagination.pageSize
+  return tasks.value.slice(start, end)
+})
 
 // 刷新任务列表
 const refreshTasks = async () => {
   try {
-    loading.value = true;
-    const res = await getUserTasks();
-    tasks.value = res.data;
-    pagination.total = res.data.length;
-    searchKeyword.value = ''; // 清空搜索关键字
+    loading.value = true
+    const res = await getUserTasks()
+    tasks.value = res.data || []
+    pagination.total = tasks.value.length
+    searchKeyword.value = ''
   } catch (error) {
-    console.error('获取任务列表失败：', error);
-    ElMessage.error('获取任务列表失败: ' + (error.message || '未知错误'));
-    // 使用模拟数据进行预览
-    tasks.value = [
-      {
-        taskId: 1,
-        fileId: 1,
-        fileName: 'sample_genome_1.fasta',
-        status: 'COMPLETED',
-        progress: 100,
-        createdAt: '2024-11-13T10:35:00',
-        startedAt: '2024-11-13T10:35:05',
-        completedAt: '2024-11-13T10:45:30',
-        duration: '10分25秒',
-      },
-      {
-        taskId: 2,
-        fileId: 2,
-        fileName: 'ecoli_k12.gb',
-        status: 'RUNNING',
-        progress: 65,
-        createdAt: '2024-11-13T11:00:00',
-        startedAt: '2024-11-13T11:00:05',
-        completedAt: null,
-        duration: null,
-      },
-      {
-        taskId: 3,
-        fileId: 3,
-        fileName: 'bacteriophage_genome.fastq',
-        status: 'PENDING',
-        progress: 0,
-        createdAt: '2024-11-13T11:15:00',
-        startedAt: null,
-        completedAt: null,
-        duration: null,
-      },
-      {
-        taskId: 4,
-        fileId: 4,
-        fileName: 'old_sample.fasta',
-        status: 'FAILED',
-        progress: 0,
-        createdAt: '2024-11-12T09:00:00',
-        startedAt: '2024-11-12T09:00:05',
-        completedAt: '2024-11-12T09:05:00',
-        duration: null,
-        errorMessage: '文件格式错误：无法解析基因组序列',
-      },
-    ];
-    pagination.total = tasks.value.length;
+    console.error('获取任务列表失败：', error)
+    ElMessage.error('获取任务列表失败')
+    tasks.value = []
+    pagination.total = 0
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 // 搜索任务
-const handleSearchTasks = async () => {
-  if (!searchKeyword.value || !searchKeyword.value.trim()) {
-    refreshTasks();
-    return;
+const handleSearch = async () => {
+  if (!searchKeyword.value?.trim()) {
+    refreshTasks()
+    return
   }
   
   try {
-    loading.value = true;
-    const res = await getUserTasks(searchKeyword.value.trim());
-    tasks.value = res.data;
-    pagination.total = res.data.length;
-    pagination.current = 1; // 重置到第一页
-    if (res.data.length === 0) {
-      ElMessage.info('未找到匹配的任务');
+    loading.value = true
+    const res = await getUserTasks(searchKeyword.value.trim())
+    tasks.value = res.data || []
+    pagination.total = tasks.value.length
+    pagination.current = 1
+    if (tasks.value.length === 0) {
+      ElMessage.info('未找到匹配的任务')
     }
   } catch (error) {
-    console.error('搜索任务失败：', error);
-    ElMessage.error('搜索任务失败: ' + (error.message || '未知错误'));
+    console.error('搜索任务失败：', error)
+    ElMessage.error('搜索任务失败')
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 
 // 查看结果
 const handleViewResult = (row) => {
-  // 调试：打印完整的 row 数据
-  console.log('handleViewResult - row:', row);
-  console.log('handleViewResult - isArg:', row.isArg, typeof row.isArg);
-  
-  // 根据 isArg 字段判断：1=ARG任务, 0=Genomad任务
-  const path = row.isArg === 1 ? '/visualization-arg' : '/visualization';
-  console.log('handleViewResult - 跳转路径:', path);
-  
   router.push({
-    path: path,
-    query: { taskId: row.taskId },
-  });
-};
+    path: '/visualization',
+    query: { taskId: row.taskId }
+  })
+}
 
 // 取消任务
 const handleCancelTask = async (row) => {
@@ -270,44 +210,33 @@ const handleCancelTask = async (row) => {
     await ElMessageBox.confirm('确定要取消该任务吗？', '提示', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      type: 'warning',
-    });
+      type: 'warning'
+    })
     
-    await cancelTask(row.taskId);
-    ElMessage.success('任务已取消');
-    await refreshTasks();
-  } catch (error) {
+    await cancelTask(row.taskId)
+    ElMessage.success('任务已取消')
+    await refreshTasks()
+  } catch {
     // 用户取消或操作失败
   }
-};
+}
 
 // 重试任务
 const handleRetryTask = async (row) => {
   try {
-    // 根据原任务类型确定分析类型：isArg=1 为 ARG，否则为 genomad
-    const analysisType = row.isArg === 1 ? 'arg' : 'genomad';
-    const taskTypeName = row.isArg === 1 ? '抗性基因检测 (ARG)' : '原噬菌体识别 (Genomad)';
+    await ElMessageBox.confirm('确定要重新运行该任务吗？', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'info'
+    })
     
-    await ElMessageBox.confirm(
-      `确定要重新运行该任务吗？\n任务类型：${taskTypeName}`, 
-      '提示', 
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'info',
-      }
-    );
-    
-    await createTask({ 
-      fileId: row.fileId,
-      analysisType: analysisType
-    });
-    ElMessage.success(`${taskTypeName}任务已重新创建`);
-    await refreshTasks();
-  } catch (error) {
+    await createTask({ fileId: row.fileId, analysisType: 'arg' })
+    ElMessage.success('抗性基因分析任务已重新创建')
+    await refreshTasks()
+  } catch {
     // 用户取消或操作失败
   }
-};
+}
 
 // 删除任务
 const handleDeleteTask = async (row) => {
@@ -315,51 +244,49 @@ const handleDeleteTask = async (row) => {
     await ElMessageBox.confirm('确定要删除该任务吗？删除后无法恢复。', '警告', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      type: 'warning',
-    });
+      type: 'warning'
+    })
     
-    await deleteTask(row.taskId);
-    ElMessage.success('任务已删除');
-    await refreshTasks();
-  } catch (error) {
+    await deleteTask(row.taskId)
+    ElMessage.success('任务已删除')
+    await refreshTasks()
+  } catch {
     // 用户取消或操作失败
   }
-};
+}
 
 // 格式化日期
 const formatDate = (dateString) => {
-  if (!dateString) return '-';
-  const date = new Date(dateString);
-  return date.toLocaleString('zh-CN');
-};
+  if (!dateString) return '-'
+  return new Date(dateString).toLocaleString('zh-CN')
+}
 
 // 计算运行时长
 const formatDuration = (start, end) => {
-  if (!start || !end) return '-';
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  if (isNaN(startDate) || isNaN(endDate)) return '-';
+  if (!start || !end) return '-'
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  if (isNaN(startDate) || isNaN(endDate)) return '-'
 
-  let diff = endDate.getTime() - startDate.getTime();
-  if (diff < 0) return '-';
+  const diff = endDate.getTime() - startDate.getTime()
+  if (diff < 0) return '-'
 
-  const totalSeconds = Math.floor(diff / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
+  const totalSeconds = Math.floor(diff / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
 
-  const parts = [];
-  if (hours) parts.push(`${hours}小时`);
-  if (minutes) parts.push(`${minutes}分`);
-  // 如果没有小时和分钟，就展示秒；否则有秒就补上
+  const parts = []
+  if (hours) parts.push(`${hours}小时`)
+  if (minutes) parts.push(`${minutes}分`)
   if (!hours && !minutes) {
-    parts.push(`${seconds}秒`);
+    parts.push(`${seconds}秒`)
   } else if (seconds) {
-    parts.push(`${seconds}秒`);
+    parts.push(`${seconds}秒`)
   }
 
-  return parts.join('');
-};
+  return parts.join('')
+}
 
 // 获取状态类型
 const getStatusType = (status) => {
@@ -368,10 +295,10 @@ const getStatusType = (status) => {
     'RUNNING': 'warning',
     'COMPLETED': 'success',
     'FAILED': 'danger',
-    'CANCELLED': 'info',
-  };
-  return types[status] || 'info';
-};
+    'CANCELLED': 'info'
+  }
+  return types[status] || 'info'
+}
 
 // 获取状态文本
 const getStatusText = (status) => {
@@ -380,36 +307,39 @@ const getStatusText = (status) => {
     'RUNNING': '运行中',
     'COMPLETED': '已完成',
     'FAILED': '失败',
-    'CANCELLED': '已取消',
-  };
-  return texts[status] || status;
-};
+    'CANCELLED': '已取消'
+  }
+  return texts[status] || status
+}
 
 // 分页大小改变
 const handleSizeChange = (val) => {
-  pagination.pageSize = val;
-  pagination.current = 1; // 切换每页数量时重置到第一页
-};
+  pagination.pageSize = val
+  pagination.current = 1
+}
 
 // 当前页改变
 const handleCurrentChange = (val) => {
-  pagination.current = val;
-};
+  pagination.current = val
+}
 
 onMounted(() => {
-  refreshTasks();
+  refreshTasks()
   
   // 定时刷新运行中的任务
-  const timer = setInterval(() => {
-    const hasRunningTask = tasks.value.some(t => t.status === 'RUNNING');
+  refreshTimer = setInterval(() => {
+    const hasRunningTask = tasks.value.some(t => t.status === 'RUNNING')
     if (hasRunningTask) {
-      refreshTasks();
+      refreshTasks()
     }
-  }, 5000);
-  
-  // 组件卸载时清除定时器
-  return () => clearInterval(timer);
-});
+  }, 5000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+  }
+})
 </script>
 
 <style scoped>
@@ -435,6 +365,12 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 :deep(.el-table) {
@@ -512,4 +448,3 @@ onMounted(() => {
   background: rgba(0, 255, 255, 0.15);
 }
 </style>
-

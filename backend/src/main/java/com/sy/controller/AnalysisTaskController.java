@@ -12,7 +12,7 @@ import java.util.Map;
 
 /**
  * 分析任务控制器
- * 用于创建、查询、管理原噬菌体识别任务
+ * 用于创建、查询、管理抗性基因（ARG）识别任务
  */
 @Slf4j
 @RestController
@@ -23,11 +23,8 @@ public class AnalysisTaskController {
     private final AnalysisTaskService analysisTaskService;
     private final JwtUtil jwtUtil;
 
-    /**·
+    /**
      * 创建分析任务
-     * @param request 包含文件ID和分析参数
-     * @param token JWT token
-     * @return 任务ID和初始状态
      */
     @PostMapping("/create")
     public Result<Map<String, Object>> createAnalysisTask(
@@ -37,11 +34,9 @@ public class AnalysisTaskController {
             Long userId = jwtUtil.getUserIdFromToken(token.replace("Bearer ", ""));
             Long fileId = Long.valueOf(request.get("fileId").toString());
             
-            log.info("用户 {} 创建分析任务，文件ID: {}", userId, fileId);
+            log.info("用户 {} 创建 ARG 分析任务，文件ID: {}", userId, fileId);
             
-            // 创建任务并启动 Docker 容器进行分析
             Map<String, Object> task = analysisTaskService.createTask(fileId, userId, request);
-            
             return Result.success("分析任务创建成功", task);
         } catch (Exception e) {
             log.error("创建分析任务失败", e);
@@ -51,8 +46,6 @@ public class AnalysisTaskController {
 
     /**
      * 获取任务列表
-     * @param token JWT token
-     * @return 任务列表
      */
     @GetMapping("/list")
     public Result<List<Map<String, Object>>> getTaskList(
@@ -76,9 +69,6 @@ public class AnalysisTaskController {
 
     /**
      * 获取任务详情
-     * @param taskId 任务ID
-     * @param token JWT token
-     * @return 任务详情
      */
     @GetMapping("/{taskId}")
     public Result<Map<String, Object>> getTaskDetail(
@@ -96,9 +86,6 @@ public class AnalysisTaskController {
 
     /**
      * 获取任务状态
-     * @param taskId 任务ID
-     * @param token JWT token
-     * @return 任务状态信息
      */
     @GetMapping("/{taskId}/status")
     public Result<Map<String, Object>> getTaskStatus(
@@ -116,9 +103,6 @@ public class AnalysisTaskController {
 
     /**
      * 取消任务
-     * @param taskId 任务ID
-     * @param token JWT token
-     * @return 取消结果
      */
     @PostMapping("/{taskId}/cancel")
     public Result<Void> cancelTask(
@@ -136,9 +120,6 @@ public class AnalysisTaskController {
 
     /**
      * 删除任务
-     * @param taskId 任务ID
-     * @param token JWT token
-     * @return 删除结果
      */
     @DeleteMapping("/{taskId}")
     public Result<Void> deleteTask(
@@ -155,10 +136,7 @@ public class AnalysisTaskController {
     }
 
     /**
-     * 获取任务结果（原噬菌体识别结果）
-     * @param taskId 任务ID
-     * @param token JWT token
-     * @return 分析结果
+     * 获取任务结果
      */
     @GetMapping("/{taskId}/result")
     public Result<Map<String, Object>> getTaskResult(
@@ -174,4 +152,3 @@ public class AnalysisTaskController {
         }
     }
 }
-

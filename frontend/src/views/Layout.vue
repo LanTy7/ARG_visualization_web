@@ -6,7 +6,7 @@
         <div class="logo">🧬</div>
         <div class="title">
           <h2>抗性基因识别</h2>
-          <p>Antibiotic Identification</p>
+          <p>ARG Identification</p>
         </div>
       </div>
       
@@ -50,7 +50,7 @@
           @click="handleLogin"
         >
           <el-icon><User /></el-icon>
-          Log in
+          登录
         </el-button>
         <el-button
           v-else
@@ -60,7 +60,7 @@
           @click="handleLogout"
         >
           <el-icon><SwitchButton /></el-icon>
-          Log out
+          退出
         </el-button>
       </div>
     </aside>
@@ -73,9 +73,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
-import { ElMessageBox } from 'element-plus';
+import { computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { ElMessageBox } from 'element-plus'
 import {
   HomeFilled,
   Upload,
@@ -83,38 +83,27 @@ import {
   Clock,
   User,
   SwitchButton,
-  Setting,
-} from '@element-plus/icons-vue';
-import { useUserStore } from '@/stores/user';
-import { logout } from '@/api/auth';
+  Setting
+} from '@element-plus/icons-vue'
+import { useUserStore } from '@/stores/user'
+import { logout } from '@/api/auth'
 
-const router = useRouter();
-const route = useRoute();
-const userStore = useUserStore();
+const router = useRouter()
+const route = useRoute()
+const userStore = useUserStore()
 
-const currentRoute = computed(() => route.path);
-
-// 判断是否是管理员（使用store中的getter）
-const isAdmin = computed(() => {
-  const admin = userStore.isAdmin;
-  // 调试输出
-  if (userStore.isLoggedIn) {
-    console.log('Layout - 用户信息:', userStore.userInfo);
-    console.log('Layout - 用户角色:', userStore.role);
-    console.log('Layout - 是否为管理员:', admin);
-  }
-  return admin;
-});
+const currentRoute = computed(() => route.path)
+const isAdmin = computed(() => userStore.isAdmin)
 
 // 菜单选择处理
 const handleMenuSelect = (index) => {
-  router.push(index);
-};
+  router.push(index)
+}
 
 // 处理登录
 const handleLogin = () => {
-  router.push('/login');
-};
+  router.push('/login')
+}
 
 // 处理登出
 const handleLogout = async () => {
@@ -122,29 +111,27 @@ const handleLogout = async () => {
     await ElMessageBox.confirm('确定要退出登录吗？', '提示', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      type: 'warning',
-    });
+      type: 'warning'
+    })
     
-    await logout();
-    userStore.logout();
-    router.push('/login');
-  } catch (error) {
+    await logout()
+    userStore.logout()
+    router.push('/login')
+  } catch {
     // 用户取消操作
   }
-};
+}
 
-// 组件挂载时，如果已登录但没有role信息，重新获取用户信息
+// 组件挂载时检查用户信息
 onMounted(async () => {
-  if (userStore.isLoggedIn && (!userStore.userInfo || !userStore.userInfo.role)) {
+  if (userStore.isLoggedIn && !userStore.userInfo?.role) {
     try {
-      console.log('检测到用户信息不完整，重新获取用户信息...');
-      await userStore.fetchUserInfo();
-      console.log('用户信息已更新:', userStore.userInfo);
+      await userStore.fetchUserInfo()
     } catch (error) {
-      console.error('获取用户信息失败:', error);
+      console.error('获取用户信息失败:', error)
     }
   }
-});
+})
 </script>
 
 <style scoped>
@@ -311,4 +298,3 @@ onMounted(async () => {
   background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
 }
 </style>
-
