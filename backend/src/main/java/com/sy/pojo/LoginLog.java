@@ -23,6 +23,8 @@ public class LoginLog {
     
     private String ipAddress;
     
+    private String location; // IP地理位置，如"浙江省杭州市"
+    
     private String userAgent;
     
     private String status; // SUCCESS, FAILED

@@ -35,6 +35,12 @@
           <span>历史记录</span>
         </el-menu-item>
         
+        <el-menu-item index="/introduction">
+          <el-icon><InfoFilled /></el-icon>
+          <span>项目介绍</span>
+        </el-menu-item>
+
+
         <el-menu-item index="/admin" v-if="isAdmin">
           <el-icon><Setting /></el-icon>
           <span>管理功能</span>
@@ -83,7 +89,8 @@ import {
   Clock,
   User,
   SwitchButton,
-  Setting
+  Setting,
+  InfoFilled
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'

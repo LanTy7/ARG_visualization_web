@@ -38,7 +38,7 @@
                   <p class="summary-desc">
                     共分析 <strong>{{ argResults.length }}</strong> 条序列，
                     其中 <strong style="color: #67C23A;">{{ argPositiveCount }}</strong> 条预测为抗性基因，
-                    <strong style="color: #F56C6C;">{{ argNegativeCount }}</strong> 条预测为非抗性基因
+                    <strong style="color: #909399;">{{ argNegativeCount }}</strong> 条预测为非抗性基因
                   </p>
                 </div>
                 <el-button type="primary" :icon="Download" @click="downloadArgResults">
@@ -62,7 +62,7 @@
                     </span>
                     <span class="legend-item">
                       <span class="legend-box arg-negative-box"></span>
-                      红色 = 预测为非抗性基因
+                      灰色 = 预测为非抗性基因
                     </span>
                   </div>
                 </template>
@@ -485,8 +485,8 @@ function initPieChart() {
             name: '非抗性基因',
             itemStyle: { 
               color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                { offset: 0, color: '#F56C6C' },
-                { offset: 1, color: '#fab6b6' }
+                { offset: 0, color: '#909399' },
+                { offset: 1, color: '#C0C4CC' }
               ])
             }
           }
@@ -833,7 +833,7 @@ h3 {
 }
 
 .arg-negative-box {
-  background-color: #f8d7da;  /* 红色 - 不是抗性基因 */
+  background-color: #E4E7ED;  /* 灰色 - 不是抗性基因 */
 }
 
 /* ARG 表格行颜色 */
@@ -842,7 +842,7 @@ h3 {
 }
 
 :deep(.arg-row-negative > td.el-table__cell) {
-  background-color: #f8d7da !important;  /* 红色 - 不是抗性基因 */
+  background-color: #E4E7ED !important;  /* 灰色 - 不是抗性基因 */
 }
 
 /* 表格工具栏样式 */

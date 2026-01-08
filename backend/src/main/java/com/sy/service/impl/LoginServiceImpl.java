@@ -8,6 +8,7 @@ import com.sy.service.LoginService;
 import com.sy.service.EmailService;
 import com.sy.util.JwtUtil;
 import com.sy.util.EmailValidator;
+import com.sy.util.IpLocationUtil;
 import com.sy.vo.RegisterRequest;
 import com.sy.vo.ResetPasswordRequest;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,6 +38,9 @@ public class LoginServiceImpl implements LoginService {
     
     @Autowired
     private EmailService emailService;
+    
+    @Autowired
+    private IpLocationUtil ipLocationUtil;
     
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     
@@ -148,6 +152,15 @@ public class LoginServiceImpl implements LoginService {
                 ip = request.getRemoteAddr();
             }
             log.setIpAddress(ip);
+            
+            // 获取IP地理位置
+            try {
+                String location = ipLocationUtil.getLocationByIp(ip);
+                log.setLocation(location);
+            } catch (Exception e) {
+                // 如果获取地理位置失败，记录错误但不影响登录流程
+                System.err.println("获取IP地理位置失败: IP=" + ip + ", 错误=" + e.getMessage());
+            }
             
             // 获取设备信息
             String userAgent = request.getHeader("User-Agent");

@@ -39,6 +39,12 @@ const routes = [
         meta: { title: '历史记录' }
       },
       {
+        path: '/introduction',
+        name: 'Introduction',
+        component: () => import('@/views/Introduction.vue'),
+        meta: { title: '项目介绍' }
+      },
+      {
         path: '/admin',
         name: 'Admin',
         component: () => import('@/views/Admin.vue'),

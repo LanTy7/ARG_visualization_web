@@ -115,7 +115,17 @@
             <el-table-column prop="fileCount" label="文件数" width="100" />
             <el-table-column prop="taskCount" label="任务数" width="100" />
             <el-table-column prop="createdAt" label="创建时间" width="180" />
-            <el-table-column prop="lastLoginAt" label="最后登录" width="180" />
+            <el-table-column label="最后登录" width="240">
+              <template #default="{ row }">
+                <div v-if="row.lastLoginAt">
+                  <div>{{ row.lastLoginAt }}</div>
+                  <div v-if="row.lastLoginLocation" style="color: #909399; font-size: 12px; margin-top: 4px;">
+                    {{ row.lastLoginLocation }}
+                  </div>
+                </div>
+                <span v-else style="color: #909399;">未登录</span>
+              </template>
+            </el-table-column>
             <el-table-column label="操作" width="120">
               <template #default="{ row }">
                 <el-button

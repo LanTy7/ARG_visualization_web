@@ -251,6 +251,10 @@ public class AdminServiceImpl implements AdminService {
         map.put("createdAt", user.getCreatedAt() != null ? user.getCreatedAt().toString() : null);
         map.put("lastLoginAt", user.getLastLoginAt() != null ? user.getLastLoginAt().toString() : null);
         
+        // 获取最后登录的地理位置
+        com.sy.pojo.LoginLog lastLogin = loginLogMapper.findLastLoginByUserId(user.getUserId());
+        map.put("lastLoginLocation", lastLogin != null ? lastLogin.getLocation() : null);
+        
         // 统计用户数据
         Integer fileCount = genomeFileMapper.countByUserId(user.getUserId());
         Integer taskCount = analysisTaskMapper.countByUserId(user.getUserId());
