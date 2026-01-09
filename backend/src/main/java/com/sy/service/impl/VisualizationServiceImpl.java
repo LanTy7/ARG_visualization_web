@@ -82,7 +82,16 @@ public class VisualizationServiceImpl implements VisualizationService {
         // 如果默认文件不存在，尝试查找其他 TSV 文件
         if (!Files.exists(argFile)) {
             log.warn("未找到 arg_predictions.tsv，尝试查找其他文件");
-            File outputDirFile = new File(taskOutputDir);
+            
+            // 先检查 arg 子目录（MAG 任务）
+            Path argSubDir = Paths.get(taskOutputDir, "arg");
+            File outputDirFile;
+            if (Files.exists(argSubDir) && Files.isDirectory(argSubDir)) {
+                outputDirFile = argSubDir.toFile();
+            } else {
+                outputDirFile = new File(taskOutputDir);
+            }
+            
             File[] files = outputDirFile.listFiles();
             if (files != null) {
                 for (File f : files) {
@@ -118,6 +127,18 @@ public class VisualizationServiceImpl implements VisualizationService {
         if (!Files.exists(argFile)) {
             // 尝试 arg_predictions.tsv
             argFile = Paths.get(taskOutputDir, "arg_predictions.tsv");
+        }
+        
+        // 如果根目录没找到，检查 arg 子目录（MAG 任务）
+        if (!Files.exists(argFile)) {
+            Path argSubDir = Paths.get(taskOutputDir, "arg");
+            if (Files.exists(argSubDir) && Files.isDirectory(argSubDir)) {
+                argFile = argSubDir.resolve("all_predictions.tsv");
+                if (!Files.exists(argFile)) {
+                    argFile = argSubDir.resolve("arg_predictions.tsv");
+                }
+                log.info("在 arg 子目录查找输出文件: {}", argFile);
+            }
         }
         
         if (!Files.exists(argFile)) {

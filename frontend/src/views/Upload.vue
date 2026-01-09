@@ -8,7 +8,25 @@
       </template>
       
       <el-form :model="uploadForm" label-width="120px" class="upload-form">
-        <el-form-item label="文件类型">
+        <!-- 输入类型选择 -->
+        <el-form-item label="输入类型">
+          <el-radio-group v-model="inputType" @change="handleInputTypeChange">
+            <el-radio-button value="sequence">蛋白质序列</el-radio-button>
+            <el-radio-button value="file">FASTA 文件</el-radio-button>
+            <el-radio-button value="mag">MAG 文件夹</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+
+        <!-- MAG 名称（仅 MAG 模式） -->
+        <el-form-item v-if="inputType === 'mag'" label="MAG 名称">
+          <el-input
+            v-model="uploadForm.magName"
+            placeholder="可选，不填则自动生成"
+          />
+        </el-form-item>
+        
+        <!-- 文件类型（非 MAG 模式） -->
+        <el-form-item v-if="inputType !== 'mag'" label="文件类型">
           <el-select v-model="uploadForm.fileType" placeholder="请选择文件类型" style="width: 100%">
             <el-option label="自动检测" value="auto-detect" />
             <el-option label="FASTA" value="fasta" />
@@ -27,13 +45,21 @@
         
         <el-form-item label="上传内容">
           <div class="upload-content-wrapper">
-            <div class="upload-mode-toggle">
-              <el-button type="primary" plain size="small" @click="toggleUploadMode">
-                切换为{{ uploadMode === 'file' ? '文本输入' : '文件上传' }}
-              </el-button>
+            <!-- 序列输入模式 -->
+            <div v-if="inputType === 'sequence'">
+              <el-input
+                v-model="uploadForm.textContent"
+                type="textarea"
+                :rows="8"
+                placeholder="在此粘贴或输入蛋白质序列（FASTA格式）"
+              />
+              <div class="el-upload__tip text-upload-tip">
+                文本内容将直接被上传到服务器进行分析
+              </div>
             </div>
 
-            <div v-if="uploadMode === 'file'">
+            <!-- 单文件上传模式 -->
+            <div v-else-if="inputType === 'file'">
               <el-upload
                 ref="uploadRef"
                 :auto-upload="false"
@@ -55,16 +81,103 @@
               </el-upload>
             </div>
 
-            <div v-else>
-              <el-input
-                v-model="uploadForm.textContent"
-                type="textarea"
-                :rows="8"
-                placeholder="在此粘贴或输入基因序列（FASTA格式）"
-              />
-              <div class="el-upload__tip text-upload-tip">
-                文本内容将直接被上传到服务器进行分析
+            <!-- MAG 文件夹上传模式 -->
+            <div v-else-if="inputType === 'mag'">
+              <!-- 上传方式选择 -->
+              <div class="mag-upload-mode">
+                <el-radio-group v-model="magUploadMode" size="small">
+                  <el-radio-button value="folder">选择文件夹</el-radio-button>
+                  <el-radio-button value="files">选择多个文件</el-radio-button>
+                </el-radio-group>
               </div>
+
+              <!-- 文件夹上传区域 -->
+              <div 
+                class="folder-upload-area"
+                @click="triggerFolderInput"
+                @dragover.prevent="onDragOver"
+                @dragleave.prevent="onDragLeave"
+                @drop.prevent="onDropFolder"
+                :class="{ 'drag-over': isDragOver }"
+              >
+                <el-icon class="folder-icon"><FolderOpened /></el-icon>
+                <div class="upload-text">
+                  <span v-if="magUploadMode === 'folder'">
+                    点击选择 MAG 文件夹，或将文件夹拖到此处
+                  </span>
+                  <span v-else>
+                    点击选择多个文件，或将文件拖到此处
+                  </span>
+                </div>
+                <div class="upload-tip">
+                  支持 .fa / .fasta / .fna 格式
+                </div>
+              </div>
+              
+              <!-- 隐藏的文件夹选择器 -->
+              <input
+                ref="folderInputRef"
+                type="file"
+                webkitdirectory
+                directory
+                multiple
+                style="display: none"
+                @change="handleFolderSelect"
+                accept=".fa,.fasta,.fna"
+              />
+              
+              <!-- 隐藏的多文件选择器 -->
+              <input
+                ref="filesInputRef"
+                type="file"
+                multiple
+                style="display: none"
+                @change="handleFilesSelect"
+                accept=".fa,.fasta,.fna"
+              />
+              
+              <!-- MAG 文件列表预览 -->
+              <div v-if="magFileList.length > 0" class="mag-file-preview">
+                <div class="mag-file-header">
+                  <span>
+                    <el-icon><FolderOpened /></el-icon>
+                    {{ magFolderName || '已选择' }} - {{ magFileList.length }} 个文件
+                  </span>
+                  <el-button type="danger" link size="small" @click="clearMagFiles">
+                    清空
+                  </el-button>
+                </div>
+                <div class="mag-file-list">
+                  <el-tag 
+                    v-for="(file, index) in magFileList.slice(0, 10)" 
+                    :key="index"
+                    closable
+                    @close="removeMagFile(index)"
+                    class="mag-file-tag"
+                  >
+                    {{ file.name }}
+                  </el-tag>
+                  <el-tag v-if="magFileList.length > 10" type="info">
+                    还有 {{ magFileList.length - 10 }} 个文件...
+                  </el-tag>
+                </div>
+              </div>
+
+              <!-- MAG 说明 -->
+              <el-alert
+                type="info"
+                :closable="false"
+                class="mag-info-alert"
+              >
+                <template #title>
+                  <div class="mag-info-content">
+                    <strong>MAG 分析说明：</strong>
+                    <p>1. 上传包含原始核酸序列文件（.fa/.fasta/.fna）的文件夹</p>
+                    <p>2. 系统将使用 Prodigal 进行基因预测，转换为蛋白质序列</p>
+                    <p>3. 然后进行抗性基因（ARG）识别和分类</p>
+                  </div>
+                </template>
+              </el-alert>
             </div>
           </div>
         </el-form-item>
@@ -77,7 +190,7 @@
             @click="handleUpload"
           >
             <el-icon><Upload /></el-icon>
-            {{ uploading ? '上传中...' : '开始上传' }}
+            {{ uploading ? '上传中...' : (inputType === 'mag' ? '上传并分析 MAG' : '开始上传') }}
           </el-button>
           <el-button @click="handleReset">重置</el-button>
         </el-form-item>
@@ -88,7 +201,7 @@
     <el-card v-if="uploadProgress.show" class="progress-card">
       <template #header>
         <div class="card-header">
-          <span>上传进度</span>
+          <span>{{ inputType === 'mag' ? 'MAG 分析进度' : '上传进度' }}</span>
         </div>
       </template>
       
@@ -98,6 +211,13 @@
           :status="uploadProgress.status"
         />
         <p class="progress-text">{{ uploadProgress.text }}</p>
+        <!-- MAG 两阶段进度显示 -->
+        <div v-if="inputType === 'mag' && uploadProgress.stage" class="stage-info">
+          <el-steps :active="uploadProgress.stage - 1" simple>
+            <el-step title="Prodigal 预处理" />
+            <el-step title="ARG 分析" />
+          </el-steps>
+        </div>
       </div>
     </el-card>
     
@@ -152,48 +272,64 @@
 import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { UploadFilled, Upload, Refresh } from '@element-plus/icons-vue'
+import { UploadFilled, Upload, Refresh, FolderOpened } from '@element-plus/icons-vue'
 import { uploadGenomeFile, getUserFiles, deleteFile } from '@/api/file'
 import { createTask } from '@/api/task'
+import { uploadMag } from '@/api/mag'
 
 const router = useRouter()
 
 const uploadRef = ref()
+const magUploadRef = ref()
+const folderInputRef = ref()
+const filesInputRef = ref()
 const uploading = ref(false)
 const loadingFiles = ref(false)
 const files = ref([])
-const uploadMode = ref('file')
+const inputType = ref('sequence')  // 'sequence' | 'file' | 'mag'
+const magUploadMode = ref('folder')  // 'folder' | 'files'
+const magFileList = ref([])
+const magFolderName = ref('')  // 文件夹名称
+const isDragOver = ref(false)
 
 const uploadForm = reactive({
   file: null,
   fileType: 'auto-detect',
   description: '',
-  textContent: ''
+  textContent: '',
+  magName: ''
 })
 
 const uploadProgress = reactive({
   show: false,
   percentage: 0,
   status: '',
-  text: ''
+  text: '',
+  stage: 0  // MAG 分析阶段：0=未开始，1=预处理，2=分析
 })
 
 const canUpload = computed(() => {
-  if (uploadMode.value === 'file') {
+  if (inputType.value === 'sequence') {
+    return !!uploadForm.textContent && uploadForm.textContent.trim().length > 0
+  } else if (inputType.value === 'file') {
     return !!uploadForm.file
+  } else if (inputType.value === 'mag') {
+    return magFileList.value.length > 0
   }
-  return !!uploadForm.textContent && uploadForm.textContent.trim().length > 0
+  return false
 })
 
-// 切换上传模式
-const toggleUploadMode = () => {
-  uploadMode.value = uploadMode.value === 'file' ? 'text' : 'file'
+// 切换输入类型
+const handleInputTypeChange = () => {
   uploadForm.file = null
   uploadForm.textContent = ''
+  magFileList.value = []
+  magFolderName.value = ''
   uploadRef.value?.clearFiles()
+  magUploadRef.value?.clearFiles()
 }
 
-// 文件改变
+// 单文件改变
 const handleFileChange = (file) => {
   uploadForm.file = file.raw
 }
@@ -203,14 +339,238 @@ const handleExceed = () => {
   ElMessage.warning('每次只能上传一个文件')
 }
 
+// 触发文件夹选择
+const triggerFolderInput = () => {
+  if (magUploadMode.value === 'folder') {
+    folderInputRef.value?.click()
+  } else {
+    filesInputRef.value?.click()
+  }
+}
+
+// 处理文件夹选择
+const handleFolderSelect = (event) => {
+  const files = event.target.files
+  if (!files || files.length === 0) return
+  
+  processSelectedFiles(files, true)
+  // 清空 input 以便再次选择同一文件夹
+  event.target.value = ''
+}
+
+// 处理多文件选择
+const handleFilesSelect = (event) => {
+  const files = event.target.files
+  if (!files || files.length === 0) return
+  
+  processSelectedFiles(files, false)
+  event.target.value = ''
+}
+
+// 处理选中的文件
+const processSelectedFiles = (files, isFolder) => {
+  const validExtensions = ['fa', 'fasta', 'fna']
+  const validFiles = []
+  let folderName = ''
+  
+  for (const file of files) {
+    // 获取文件扩展名
+    const ext = file.name.split('.').pop()?.toLowerCase()
+    
+    if (validExtensions.includes(ext)) {
+      validFiles.push(file)
+      
+      // 从 webkitRelativePath 获取文件夹名称
+      if (isFolder && file.webkitRelativePath && !folderName) {
+        const pathParts = file.webkitRelativePath.split('/')
+        if (pathParts.length > 1) {
+          folderName = pathParts[0]
+        }
+      }
+    }
+  }
+  
+  if (validFiles.length === 0) {
+    ElMessage.warning('未找到有效的 FASTA 文件（.fa/.fasta/.fna）')
+    return
+  }
+  
+  magFileList.value = validFiles
+  magFolderName.value = folderName || ''
+  
+  // 如果没有设置 MAG 名称，使用文件夹名称
+  if (folderName && !uploadForm.magName) {
+    uploadForm.magName = folderName
+  }
+  
+  ElMessage.success(`已选择 ${validFiles.length} 个有效文件`)
+}
+
+// 拖拽相关
+const onDragOver = () => {
+  isDragOver.value = true
+}
+
+const onDragLeave = () => {
+  isDragOver.value = false
+}
+
+const onDropFolder = async (event) => {
+  isDragOver.value = false
+  
+  const items = event.dataTransfer.items
+  if (!items || items.length === 0) return
+  
+  const validExtensions = ['fa', 'fasta', 'fna']
+  const validFiles = []
+  let folderName = ''
+  
+  // 处理拖入的项目
+  for (const item of items) {
+    if (item.kind === 'file') {
+      const entry = item.webkitGetAsEntry?.()
+      
+      if (entry) {
+        if (entry.isDirectory) {
+          // 是文件夹，递归读取
+          folderName = entry.name
+          const files = await readDirectoryFiles(entry)
+          for (const file of files) {
+            const ext = file.name.split('.').pop()?.toLowerCase()
+            if (validExtensions.includes(ext)) {
+              validFiles.push(file)
+            }
+          }
+        } else if (entry.isFile) {
+          // 是单个文件
+          const file = item.getAsFile()
+          if (file) {
+            const ext = file.name.split('.').pop()?.toLowerCase()
+            if (validExtensions.includes(ext)) {
+              validFiles.push(file)
+            }
+          }
+        }
+      } else {
+        // 兼容不支持 webkitGetAsEntry 的浏览器
+        const file = item.getAsFile()
+        if (file) {
+          const ext = file.name.split('.').pop()?.toLowerCase()
+          if (validExtensions.includes(ext)) {
+            validFiles.push(file)
+          }
+        }
+      }
+    }
+  }
+  
+  if (validFiles.length === 0) {
+    ElMessage.warning('未找到有效的 FASTA 文件（.fa/.fasta/.fna）')
+    return
+  }
+  
+  magFileList.value = validFiles
+  magFolderName.value = folderName
+  
+  if (folderName && !uploadForm.magName) {
+    uploadForm.magName = folderName
+  }
+  
+  ElMessage.success(`已选择 ${validFiles.length} 个有效文件`)
+}
+
+// 递归读取文件夹中的文件
+const readDirectoryFiles = (directoryEntry) => {
+  return new Promise((resolve) => {
+    const files = []
+    const dirReader = directoryEntry.createReader()
+    
+    const readEntries = () => {
+      dirReader.readEntries(async (entries) => {
+        if (entries.length === 0) {
+          resolve(files)
+          return
+        }
+        
+        for (const entry of entries) {
+          if (entry.isFile) {
+            const file = await getFileFromEntry(entry)
+            if (file) files.push(file)
+          } else if (entry.isDirectory) {
+            // 递归读取子目录
+            const subFiles = await readDirectoryFiles(entry)
+            files.push(...subFiles)
+          }
+        }
+        
+        // 继续读取（有些浏览器分批返回）
+        readEntries()
+      })
+    }
+    
+    readEntries()
+  })
+}
+
+// 从 FileEntry 获取 File 对象
+const getFileFromEntry = (fileEntry) => {
+  return new Promise((resolve) => {
+    fileEntry.file(
+      (file) => resolve(file),
+      () => resolve(null)
+    )
+  })
+}
+
+// MAG 文件改变（兼容旧逻辑）
+const handleMagFileChange = (file, fileList) => {
+  // 过滤有效的 FASTA 文件
+  const validExtensions = ['fa', 'fasta', 'fna']
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  
+  if (!validExtensions.includes(ext)) {
+    ElMessage.warning(`不支持的文件格式: ${file.name}`)
+    // 从列表中移除
+    const index = fileList.findIndex(f => f.uid === file.uid)
+    if (index > -1) {
+      fileList.splice(index, 1)
+    }
+    return
+  }
+  
+  magFileList.value = fileList.map(f => f.raw || f)
+}
+
+// MAG 文件移除
+const handleMagFileRemove = (file, fileList) => {
+  magFileList.value = fileList.map(f => f.raw || f)
+}
+
+// 移除单个 MAG 文件
+const removeMagFile = (index) => {
+  magFileList.value.splice(index, 1)
+  magUploadRef.value?.clearFiles()
+}
+
+// 清空所有 MAG 文件
+const clearMagFiles = () => {
+  magFileList.value = []
+  magFolderName.value = ''
+  magUploadRef.value?.clearFiles()
+}
+
 // 上传文件
 const handleUpload = async () => {
-  if (uploadMode.value === 'file') {
-    if (!uploadForm.file) {
-      ElMessage.warning('请选择要上传的文件')
-      return
-    }
+  if (inputType.value === 'mag') {
+    await handleMagUpload()
   } else {
+    await handleNormalUpload()
+  }
+}
+
+// 普通上传（序列/单文件）
+const handleNormalUpload = async () => {
+  if (inputType.value === 'sequence') {
     if (!uploadForm.textContent || !uploadForm.textContent.trim()) {
       ElMessage.warning('请输入要上传的文本内容')
       return
@@ -220,6 +580,11 @@ const handleUpload = async () => {
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
     const virtualFileName = `pasted_sequence_${Date.now()}.fasta`
     uploadForm.file = new File([blob], virtualFileName, { type: 'text/plain;charset=utf-8' })
+  } else if (inputType.value === 'file') {
+    if (!uploadForm.file) {
+      ElMessage.warning('请选择要上传的文件')
+      return
+    }
   }
   
   // 检查文件大小
@@ -236,6 +601,7 @@ const handleUpload = async () => {
     uploadProgress.percentage = 0
     uploadProgress.status = ''
     uploadProgress.text = '正在上传文件...'
+    uploadProgress.stage = 0
     
     const formData = new FormData()
     formData.append('file', uploadForm.file)
@@ -288,6 +654,94 @@ const handleUpload = async () => {
   }
 }
 
+// MAG 上传
+const handleMagUpload = async () => {
+  if (magFileList.value.length === 0) {
+    ElMessage.warning('请选择要上传的 MAG 文件')
+    return
+  }
+  
+  try {
+    uploading.value = true
+    uploadProgress.show = true
+    uploadProgress.percentage = 0
+    uploadProgress.status = ''
+    uploadProgress.text = '正在上传 MAG 文件...'
+    uploadProgress.stage = 1
+    
+    const formData = new FormData()
+    
+    // 添加所有文件
+    for (const file of magFileList.value) {
+      formData.append('files', file)
+    }
+    
+    // 添加其他参数
+    if (uploadForm.magName) {
+      formData.append('magName', uploadForm.magName)
+    }
+    if (uploadForm.description) {
+      formData.append('description', uploadForm.description)
+    }
+    formData.append('autoAnalyze', 'true')
+    
+    uploadProgress.percentage = 20
+    uploadProgress.text = '文件上传中...'
+    
+    const res = await uploadMag(formData)
+    
+    uploadProgress.percentage = 50
+    uploadProgress.text = 'MAG 分析任务已创建，正在处理...'
+    uploadProgress.stage = 1
+    
+    ElMessage.success(`MAG 上传成功，共 ${res.data.fileCount} 个文件`)
+    
+    // 如果创建了任务，显示任务信息
+    if (res.data.task) {
+      uploadProgress.percentage = 100
+      uploadProgress.status = 'success'
+      uploadProgress.text = `分析任务已创建 (ID: ${res.data.task.taskId})`
+      
+      handleReset()
+      
+      // 询问是否跳转到历史记录
+      try {
+        await ElMessageBox.confirm(
+          'MAG 分析任务已创建，是否前往历史记录查看进度？',
+          '任务已创建',
+          {
+            confirmButtonText: '查看进度',
+            cancelButtonText: '留在此页',
+            type: 'success'
+          }
+        )
+        router.push('/history')
+      } catch {
+        // 用户选择留在此页
+      }
+    }
+    
+  } catch (error) {
+    console.error('MAG 上传失败：', error)
+    uploadProgress.status = 'exception'
+    
+    let errorMessage = 'MAG 上传失败，请重试'
+    if (error.response?.data?.message) {
+      errorMessage = error.response.data.message
+    }
+    
+    uploadProgress.text = errorMessage
+    ElMessage.error(errorMessage)
+  } finally {
+    uploading.value = false
+    setTimeout(() => {
+      if (uploadProgress.status !== 'exception') {
+        uploadProgress.show = false
+      }
+    }, 5000)
+  }
+}
+
 // 开始分析（直接使用 ARG 类型）
 const startAnalysis = async (fileId) => {
   try {
@@ -306,8 +760,13 @@ const handleReset = () => {
   uploadForm.fileType = 'auto-detect'
   uploadForm.description = ''
   uploadForm.textContent = ''
-  uploadMode.value = 'file'
+  uploadForm.magName = ''
+  magFileList.value = []
+  magFolderName.value = ''
+  magUploadMode.value = 'folder'
+  inputType.value = 'sequence'
   uploadRef.value?.clearFiles()
+  magUploadRef.value?.clearFiles()
 }
 
 // 刷新文件列表
@@ -429,12 +888,6 @@ onMounted(() => {
   width: 100%;
 }
 
-.upload-mode-toggle {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
-}
-
 :deep(.el-form-item__label) {
   color: rgba(255, 255, 255, 0.8);
 }
@@ -498,6 +951,20 @@ onMounted(() => {
   border-color: rgba(0, 255, 255, 0.5);
 }
 
+/* Radio Button 样式 */
+:deep(.el-radio-button__inner) {
+  background: rgba(0, 255, 255, 0.05);
+  border-color: rgba(0, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+:deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: rgba(0, 255, 255, 0.3);
+  border-color: #00ffff;
+  color: #00ffff;
+  box-shadow: -1px 0 0 0 #00ffff;
+}
+
 .upload-demo {
   width: 100%;
 }
@@ -525,6 +992,108 @@ onMounted(() => {
   color: rgba(255, 255, 255, 0.6);
 }
 
+/* MAG 上传样式 */
+.mag-upload :deep(.el-upload-dragger) {
+  border-color: rgba(103, 194, 58, 0.4);
+}
+
+.mag-upload :deep(.el-upload-dragger:hover) {
+  border-color: rgba(103, 194, 58, 0.7);
+  background: rgba(103, 194, 58, 0.08);
+}
+
+/* MAG 上传模式切换 */
+.mag-upload-mode {
+  margin-bottom: 16px;
+}
+
+/* 文件夹上传区域 */
+.folder-upload-area {
+  padding: 40px 20px;
+  background: rgba(0, 255, 255, 0.05);
+  border: 2px dashed rgba(103, 194, 58, 0.4);
+  border-radius: 8px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.folder-upload-area:hover {
+  border-color: rgba(103, 194, 58, 0.7);
+  background: rgba(103, 194, 58, 0.08);
+}
+
+.folder-upload-area.drag-over {
+  border-color: #67C23A;
+  background: rgba(103, 194, 58, 0.15);
+  transform: scale(1.01);
+}
+
+.folder-upload-area .folder-icon {
+  font-size: 48px;
+  color: rgba(103, 194, 58, 0.7);
+  margin-bottom: 12px;
+}
+
+.folder-upload-area .upload-text {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.folder-upload-area .upload-tip {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+}
+
+.mag-file-preview {
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(0, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 255, 0.2);
+}
+
+.mag-file-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 14px;
+}
+
+.mag-file-header .el-icon {
+  margin-right: 6px;
+  color: #67C23A;
+}
+
+.mag-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mag-file-tag {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mag-info-alert {
+  margin-top: 16px;
+}
+
+.mag-info-alert :deep(.el-alert__title) {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mag-info-content p {
+  margin: 4px 0;
+  font-weight: normal;
+}
+
 .progress-card {
   margin-top: 24px;
 }
@@ -537,6 +1106,30 @@ onMounted(() => {
   margin-top: 16px;
   text-align: center;
   color: rgba(255, 255, 255, 0.8);
+}
+
+.stage-info {
+  margin-top: 20px;
+}
+
+:deep(.el-steps--simple) {
+  background: rgba(0, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px 20px;
+}
+
+:deep(.el-step__title) {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+
+:deep(.el-step__title.is-process) {
+  color: #00ffff;
+  font-weight: 600;
+}
+
+:deep(.el-step__title.is-finish) {
+  color: #67C23A;
 }
 
 .files-card {

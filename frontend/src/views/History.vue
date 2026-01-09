@@ -48,20 +48,34 @@
         
         <el-table-column label="任务ID" width="100" prop="taskId" />
         <el-table-column prop="fileName" label="文件名" min-width="200" show-overflow-tooltip />
-        <el-table-column label="状态" width="120">
+        <el-table-column label="状态" width="150">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">
-              {{ getStatusText(row.status) }}
-            </el-tag>
+            <div class="status-cell">
+              <el-tag :type="getStatusType(row.status)">
+                {{ getStatusText(row.status) }}
+              </el-tag>
+              <!-- MAG 任务阶段指示 -->
+              <span v-if="isMagTask(row) && isProcessing(row.status)" class="stage-indicator">
+                {{ getStageText(row.status) }}
+              </span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="进度" width="150">
+        <el-table-column label="进度" width="180">
           <template #default="{ row }">
-            <el-progress
-              v-if="row.status === 'RUNNING'"
-              :percentage="row.progress || 0"
-              :status="row.progress === 100 ? 'success' : ''"
-            />
+            <div v-if="isProcessing(row.status)" class="progress-cell">
+              <el-progress
+                :percentage="row.progress || 0"
+                :status="row.progress === 100 ? 'success' : ''"
+              />
+              <!-- MAG 两阶段进度 -->
+              <div v-if="isMagTask(row)" class="stage-progress">
+                <el-steps :active="getStageNumber(row.status) - 1" simple size="small">
+                  <el-step title="预处理" />
+                  <el-step title="分析" />
+                </el-steps>
+              </div>
+            </div>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -293,6 +307,8 @@ const getStatusType = (status) => {
   const types = {
     'PENDING': 'info',
     'RUNNING': 'warning',
+    'PREPROCESSING': 'warning',
+    'ANALYZING': 'warning',
     'COMPLETED': 'success',
     'FAILED': 'danger',
     'CANCELLED': 'info'
@@ -305,11 +321,37 @@ const getStatusText = (status) => {
   const texts = {
     'PENDING': '等待中',
     'RUNNING': '运行中',
+    'PREPROCESSING': '预处理中',
+    'ANALYZING': '分析中',
     'COMPLETED': '已完成',
     'FAILED': '失败',
     'CANCELLED': '已取消'
   }
   return texts[status] || status
+}
+
+// 判断是否为 MAG 任务
+const isMagTask = (row) => {
+  return row.taskName && row.taskName.includes('MAG')
+}
+
+// 判断是否正在处理中
+const isProcessing = (status) => {
+  return ['RUNNING', 'PREPROCESSING', 'ANALYZING'].includes(status)
+}
+
+// 获取阶段编号
+const getStageNumber = (status) => {
+  if (status === 'PREPROCESSING') return 1
+  if (status === 'ANALYZING') return 2
+  return 1
+}
+
+// 获取阶段文本
+const getStageText = (status) => {
+  if (status === 'PREPROCESSING') return '(1/2)'
+  if (status === 'ANALYZING') return '(2/2)'
+  return ''
 }
 
 // 分页大小改变
@@ -446,5 +488,48 @@ onUnmounted(() => {
 :deep(.el-pagination .el-pager li:hover) {
   color: #00ffff;
   background: rgba(0, 255, 255, 0.15);
+}
+
+/* 状态和进度样式 */
+.status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.stage-indicator {
+  font-size: 11px;
+  color: #E6A23C;
+}
+
+.progress-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stage-progress {
+  margin-top: 4px;
+}
+
+.stage-progress :deep(.el-steps--simple) {
+  background: rgba(0, 255, 255, 0.03);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.stage-progress :deep(.el-step__title) {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.stage-progress :deep(.el-step__title.is-process) {
+  color: #E6A23C;
+  font-weight: 500;
+}
+
+.stage-progress :deep(.el-step__title.is-finish) {
+  color: #67C23A;
 }
 </style>

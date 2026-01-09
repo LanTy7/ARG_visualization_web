@@ -6,6 +6,7 @@ import com.sy.mapper.GenomeFileMapper;
 import com.sy.pojo.AnalysisTask;
 import com.sy.pojo.GenomeFile;
 import com.sy.service.AnalysisTaskService;
+import com.sy.service.MagAnalysisService;
 import com.sy.service.TaskQueueManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +14,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -31,9 +35,13 @@ public class AnalysisTaskServiceImpl implements AnalysisTaskService {
     private final GenomeFileMapper genomeFileMapper;
     private final DockerServiceImpl dockerService;
     private final TaskQueueManager taskQueueManager;
+    private final MagAnalysisService magAnalysisService;
     
     @Value("${analysis.output-dir:./outputs}")
     private String outputBaseDir;
+
+    @Value("${file.upload.mag-dir:./uploads/mag}")
+    private String magUploadDir;
 
     @Override
     public Map<String, Object> createTask(Long fileId, Long userId, Map<String, Object> params) {
@@ -87,10 +95,7 @@ public class AnalysisTaskServiceImpl implements AnalysisTaskService {
         }
         
         return tasks.stream()
-                .map(task -> {
-                    GenomeFile file = genomeFileMapper.selectById(task.getFileId());
-                    return convertTaskToMap(task, file != null ? file.getOriginalFilename() : "Unknown");
-                })
+                .map(task -> convertTaskToMap(task, getTaskDisplayName(task)))
                 .collect(Collectors.toList());
     }
 
@@ -114,10 +119,7 @@ public class AnalysisTaskServiceImpl implements AnalysisTaskService {
         }
         
         return tasks.stream()
-                .map(task -> {
-                    GenomeFile file = genomeFileMapper.selectById(task.getFileId());
-                    return convertTaskToMap(task, file != null ? file.getOriginalFilename() : "Unknown");
-                })
+                .map(task -> convertTaskToMap(task, getTaskDisplayName(task)))
                 .collect(Collectors.toList());
     }
 
@@ -131,8 +133,7 @@ public class AnalysisTaskServiceImpl implements AnalysisTaskService {
             throw new RuntimeException("无权访问该任务");
         }
         
-        GenomeFile file = genomeFileMapper.selectById(task.getFileId());
-        return convertTaskToMap(task, file != null ? file.getOriginalFilename() : "Unknown");
+        return convertTaskToMap(task, getTaskDisplayName(task));
     }
 
     @Override
@@ -322,6 +323,43 @@ public class AnalysisTaskServiceImpl implements AnalysisTaskService {
     }
 
     /**
+     * 获取任务的显示文件名
+     * 对于普通任务，返回关联文件的原始文件名
+     * 对于 MAG 任务，返回 MAG 目录名或从任务名称中提取
+     */
+    private String getTaskDisplayName(AnalysisTask task) {
+        // 如果有关联文件，优先使用文件名
+        if (task.getFileId() != null) {
+            GenomeFile file = genomeFileMapper.selectById(task.getFileId());
+            if (file != null) {
+                return file.getOriginalFilename();
+            }
+        }
+        
+        // MAG 任务：尝试从 magDirPath 提取目录名
+        if ("MAG".equals(task.getTaskType()) && task.getMagDirPath() != null) {
+            Path magDir = Paths.get(task.getMagDirPath());
+            String dirName = magDir.getFileName().toString();
+            // 如果目录名是自动生成的（如 mag_1_20260109...），则从任务名称提取
+            if (dirName.startsWith("mag_") && task.getTaskName() != null) {
+                // 任务名称格式: "MAG 抗性基因检测 - xxx"
+                String taskName = task.getTaskName();
+                if (taskName.contains(" - ")) {
+                    return taskName.substring(taskName.lastIndexOf(" - ") + 3);
+                }
+            }
+            return dirName;
+        }
+        
+        // 从任务名称提取
+        if (task.getTaskName() != null && task.getTaskName().contains(" - ")) {
+            return task.getTaskName().substring(task.getTaskName().lastIndexOf(" - ") + 3);
+        }
+        
+        return "Unknown";
+    }
+
+    /**
      * 将Map转换为JSON字符串
      */
     private String convertToJson(Map<String, Object> map) {
@@ -343,6 +381,118 @@ public class AnalysisTaskServiceImpl implements AnalysisTaskService {
             return sb.toString();
         } catch (Exception e) {
             return "{}";
+        }
+    }
+
+    /**
+     * 创建 MAG 分析任务
+     * @param magDirPath MAG 文件夹路径
+     * @param userId 用户ID
+     * @param magName MAG 名称
+     * @param params 分析参数
+     * @return 任务信息
+     */
+    public Map<String, Object> createMagTask(String magDirPath, Long userId, String magName, Map<String, Object> params) {
+        // 统计 MAG 文件数量
+        int fileCount = 0;
+        try {
+            Path magDir = Paths.get(magDirPath);
+            if (Files.exists(magDir) && Files.isDirectory(magDir)) {
+                fileCount = (int) Files.list(magDir)
+                    .filter(p -> {
+                        String name = p.getFileName().toString().toLowerCase();
+                        return name.endsWith(".fa") || name.endsWith(".fasta") || name.endsWith(".fna");
+                    })
+                    .count();
+            }
+        } catch (Exception e) {
+            log.warn("统计 MAG 文件数量失败", e);
+        }
+        
+        // 创建任务
+        AnalysisTask task = new AnalysisTask();
+        task.setUserId(userId);
+        task.setFileId(null);  // MAG 任务没有对应的单个文件
+        task.setTaskType("MAG");  // 设置任务类型
+        task.setMagDirPath(magDirPath);  // 设置 MAG 目录路径
+        task.setMagFileCount(fileCount);  // 设置文件数量
+        task.setTaskName("MAG 抗性基因检测 - " + magName);
+        task.setStatus("PENDING");
+        task.setProgress(0);
+        task.setCreatedAt(LocalDateTime.now());
+        
+        // 保存参数（包含 MAG 路径和类型标识）
+        Map<String, Object> taskParams = new HashMap<>();
+        if (params != null) {
+            taskParams.putAll(params);
+        }
+        taskParams.put("analysisType", "mag");
+        taskParams.put("magDirPath", magDirPath);
+        taskParams.put("magName", magName);
+        task.setParameters(convertToJson(taskParams));
+        
+        // 保存到数据库
+        analysisTaskMapper.insert(task);
+        
+        // 设置输出目录
+        String outputDir = outputBaseDir + File.separator + "task_" + task.getTaskId();
+        task.setOutputDir(outputDir);
+        analysisTaskMapper.updateById(task);
+        
+        log.info("创建 MAG 分析任务: taskId={}, magDir={}, userId={}", task.getTaskId(), magDirPath, userId);
+        
+        // 异步执行 MAG 分析任务
+        taskQueueManager.submitTask(task.getTaskId(), 
+                () -> executeMagAnalysis(task.getTaskId(), magDirPath, params));
+        
+        return convertTaskToMap(task, magName);
+    }
+
+    /**
+     * 执行 MAG 分析任务
+     */
+    private void executeMagAnalysis(Long taskId, String magDirPath, Map<String, Object> params) {
+        AnalysisTask task = analysisTaskMapper.selectById(taskId);
+        if (task == null) {
+            log.error("任务不存在: taskId={}", taskId);
+            return;
+        }
+        
+        try {
+            // 更新任务状态
+            task.setStatus("RUNNING");
+            task.setStartedAt(LocalDateTime.now());
+            task.setProgress(0);
+            analysisTaskMapper.updateById(task);
+            
+            log.info("开始执行 MAG 分析任务: taskId={}", taskId);
+            
+            Path magDir = Paths.get(magDirPath);
+            Path outputDir = Paths.get(task.getOutputDir());
+            
+            // 执行 MAG 分析（包含 Prodigal 预处理 + ARG 分析）
+            Map<String, Object> result = magAnalysisService.analyzeMag(taskId, magDir, outputDir, params);
+            
+            // 更新任务状态
+            task.setStatus("COMPLETED");
+            task.setProgress(100);
+            task.setCompletedAt(LocalDateTime.now());
+            
+            // 保存 ARG 数量
+            Object argCountObj = result.get("argCount");
+            if (argCountObj != null) {
+                task.setProphageCount((Integer) argCountObj);
+            }
+            
+            analysisTaskMapper.updateById(task);
+            log.info("MAG 分析任务完成: taskId={}", taskId);
+            
+        } catch (Exception e) {
+            log.error("MAG 分析任务失败: taskId={}", taskId, e);
+            task.setStatus("FAILED");
+            task.setErrorMessage(e.getMessage());
+            task.setCompletedAt(LocalDateTime.now());
+            analysisTaskMapper.updateById(task);
         }
     }
 }

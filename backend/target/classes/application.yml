@@ -1,39 +1,29 @@
 server:
   port: 8080
-  # Tomcat配置
   tomcat:
-    # 最大连接数
     max-connections: 10000
-    # 最大线程数
     threads:
       max: 200
       min-spare: 10
-    # 连接超时时间（毫秒）
     connection-timeout: 300000
 
 spring:
-  # 文件上传配置（multipart）
+  # 文件上传配置
   servlet:
     multipart:
-      # 单个文件最大大小（500MB）
       max-file-size: 524288000
-      # 整个请求最大大小（500MB）
       max-request-size: 524288000
-      # 文件写入磁盘的阈值（超过此大小会写入临时文件）
       file-size-threshold: 10485760
-      # 上传文件临时存储位置
       location: ${java.io.tmpdir}
-      # 是否启用multipart上传
       enabled: true
-      # 是否在文件大小超过阈值时延迟解析
       resolve-lazily: false
   
   # 邮件服务器配置
   mail:
     host: smtp.qq.com  
     port: 587
-    username: ${MAIL_USERNAME:277862362@qq.com}  
-    password: ${MAIL_PASSWORD:pznqkpltyjlzbihh}   
+    username: ${MAIL_USERNAME:1627330037@qq.com}  
+    password: ${MAIL_PASSWORD:dpllqwzfouvsecji}   
     properties:
       mail:
         smtp:
@@ -48,7 +38,7 @@ spring:
     redis:
       host: ${REDIS_HOST:127.0.0.1}
       port: 6379
-      password: qwer@105
+      password: ${REDIS_PASSWORD:}
       database: 0
       timeout: 10000
       lettuce:
@@ -57,69 +47,43 @@ spring:
           max-wait: -1
           max-idle: 8
           min-idle: 0
-      connect-timeout: 5000
-      read-timeout: 5000
-      write-timeout: 5000
 
 # 邮件调试配置
 email:
-  # 调试模式：true-所有邮件发送到固定邮箱，false-发送到真实邮箱
   debug-mode: ${EMAIL_DEBUG_MODE:true}
-  # 调试模式下接收所有验证码的邮箱
-  debug-recipient: ${EMAIL_DEBUG_RECIPIENT:277862362@qq.com}
+  debug-recipient: ${EMAIL_DEBUG_RECIPIENT:1627330037@qq.com}
       
 jwt:
-  
   secret: ${JWT_SECRET_KEY:springbot-jwt-secret-key-2024-secure-and-long-enough}
-  
   expiration: ${JWT_EXPIRATION:86400000}
 
 # 文件上传配置
 file:
   upload:
-    # 基因组文件在宿主机上的上传根目录
-    genome-dir: ${GENOME_UPLOAD_HOST_PATH:/home/zhaoshuy/data/uploads/genome}
-    # 最大文件大小（100MB）
-    max-size: 104857600
+    genome-dir: ${GENOME_UPLOAD_HOST_PATH:/home/data/uploads/genome}
+    mag-dir: ${MAG_UPLOAD_HOST_PATH:/home/data/uploads/mag}
+    max-size: 524288000
 
-# Docker 配置
+# Docker 配置 - 抗性基因检测
 docker:
-  # 是否启用 Docker（开发时可设为 false 使用模拟数据）
   enabled: ${DOCKER_ENABLED:true}
-  # Docker 命令前缀
-  # - 后端在 WSL 中运行：设为空字符串 ""（默认，直接使用 bash 执行）
-  # - 后端在 Windows 中运行，通过 WSL 调用 Docker：设为 "wsl"
-  # - Linux 集群环境：设为空字符串 ""
   command-prefix: ${DOCKER_COMMAND_PREFIX:}
-  # genomad 配置（原噬菌体识别）
-  genomad:
-    # 运行的 Docker 镜像名
-    image-name: ${GENOMAD_IMAGE:antoniopcamargo/genomad:latest}
-    # 数据库在宿主机上的绝对路径（直接使用 Linux 路径格式）
-    database-path: ${GENOMAD_DB_HOST_PATH:/home/zhaoshuy/genomad_docker/genomad_db}
-    # 容器内输入目录挂载点
-    input-mount: ${DOCKER_INPUT_MOUNT:/input}
-    # 容器内输出目录挂载点
-    output-mount: ${DOCKER_OUTPUT_MOUNT:/output}
-    # 并发限制（同时运行的最大任务数）
-    max-concurrent: 1
-  # ARG 配置（抗性基因检测）
+  # ARG 配置
   arg:
-    # 运行的 Docker 镜像名
-    #image-name: ${ARG_IMAGE:arg-predictor:latest}
     image-name: ${ARG_IMAGE:arg-bilstm:gpu}
-    # 容器内模型数据库路径（镜像内置）
     model-path: ${ARG_MODEL_PATH:/app/models}
-    # 容器内输入目录挂载点
     input-mount: ${ARG_INPUT_MOUNT:/input}
-    # 容器内输出目录挂载点
     output-mount: ${ARG_OUTPUT_MOUNT:/output}
+    use-gpu: ${ARG_USE_GPU:true}
+  # Prodigal 配置 (MAG 预处理)
+  prodigal:
+    image-name: ${PRODIGAL_IMAGE:prodigal:latest}
+    timeout: ${PRODIGAL_TIMEOUT:600}
+    parallel-threads: ${PRODIGAL_PARALLEL_THREADS:8}
+    use-meta-mode: ${PRODIGAL_USE_META_MODE:true}
 
 # 分析任务配置
 analysis:
-  # 结果输出在宿主机上的根目录
-  output-dir: ${ANALYSIS_OUTPUT_HOST_PATH:/home/zhaoshuy/data/outputs}
-  # 任务超时时间（秒）
+  output-dir: ${ANALYSIS_OUTPUT_HOST_PATH:/home/data/outputs}
   timeout: 3600
-  # 任务队列大小
-  queue-size: 100 
+  queue-size: 100

@@ -16,7 +16,13 @@ public class AnalysisTask {
     
     private Long userId;
     
-    private Long fileId;
+    private Long fileId;  // 普通任务的文件ID，MAG任务为null
+    
+    private String taskType;  // 任务类型：NORMAL-普通任务, MAG-MAG分析
+    
+    private String magDirPath;  // MAG文件夹路径
+    
+    private Integer magFileCount;  // MAG文件数量
     
     private String taskName;
     

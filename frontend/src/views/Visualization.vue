@@ -188,6 +188,92 @@
           </el-tab-pane>
         </el-tabs>
       </el-card>
+      
+      <!-- 下载结果区域 -->
+      <el-card class="download-card">
+        <template #header>
+          <div class="card-header">
+            <span><el-icon><Download /></el-icon> 下载分析结果</span>
+          </div>
+        </template>
+        
+        <div class="download-content" v-loading="downloadLoading">
+          <el-alert 
+            v-if="isMagTask" 
+            type="info" 
+            :closable="false" 
+            style="margin-bottom: 16px;"
+          >
+            <template #title>
+              <span>这是一个 MAG 分析任务，可下载 Prodigal 预处理结果</span>
+            </template>
+          </el-alert>
+          
+          <div class="download-items">
+            <!-- ARG 预测结果 - 所有任务都有 -->
+            <div class="download-item">
+              <div class="download-info">
+                <el-icon class="file-icon"><Document /></el-icon>
+                <div class="file-details">
+                  <span class="file-name">ARG 预测结果</span>
+                  <span class="file-desc">包含所有序列的抗性基因预测结果 (TSV 格式)</span>
+                  <span class="file-size" v-if="downloadFiles.arg">{{ downloadFiles.arg.sizeFormatted }}</span>
+                </div>
+              </div>
+              <el-button type="primary" size="small" @click="handleDownload('arg')" :loading="downloading.arg">
+                <el-icon><Download /></el-icon> 下载
+              </el-button>
+            </div>
+            
+            <!-- MAG 任务特有的下载选项 -->
+            <template v-if="isMagTask">
+              <!-- 合并后的蛋白质序列 -->
+              <div class="download-item" v-if="downloadFiles.merged">
+                <div class="download-info">
+                  <el-icon class="file-icon" style="color: #67C23A;"><Document /></el-icon>
+                  <div class="file-details">
+                    <span class="file-name">合并后的蛋白质序列</span>
+                    <span class="file-desc">Prodigal 预测后合并的所有蛋白质序列 (FAA 格式)</span>
+                    <span class="file-size">{{ downloadFiles.merged.sizeFormatted }}</span>
+                  </div>
+                </div>
+                <el-button type="success" size="small" @click="handleDownload('merged')" :loading="downloading.merged">
+                  <el-icon><Download /></el-icon> 下载
+                </el-button>
+              </div>
+              
+              <!-- Prodigal 结果打包 -->
+              <div class="download-item" v-if="downloadFiles.prodigal">
+                <div class="download-info">
+                  <el-icon class="file-icon" style="color: #E6A23C;"><FolderOpened /></el-icon>
+                  <div class="file-details">
+                    <span class="file-name">Prodigal 预测结果</span>
+                    <span class="file-desc">{{ downloadFiles.prodigal.name }} (ZIP 打包)</span>
+                    <span class="file-size">{{ downloadFiles.prodigal.sizeFormatted }}</span>
+                  </div>
+                </div>
+                <el-button type="warning" size="small" @click="handleDownload('prodigal')" :loading="downloading.prodigal">
+                  <el-icon><Download /></el-icon> 下载
+                </el-button>
+              </div>
+            </template>
+            
+            <!-- 一键下载全部 -->
+            <div class="download-item download-all">
+              <div class="download-info">
+                <el-icon class="file-icon" style="color: #409EFF;"><Files /></el-icon>
+                <div class="file-details">
+                  <span class="file-name">下载全部结果</span>
+                  <span class="file-desc">打包下载所有分析结果文件 (ZIP 格式)</span>
+                </div>
+              </div>
+              <el-button type="primary" @click="handleDownload('all')" :loading="downloading.all">
+                <el-icon><Download /></el-icon> 一键下载全部
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </el-card>
     </template>
   </div>
 </template>
@@ -196,18 +282,32 @@
 import { ref, reactive, computed, onMounted, watch, nextTick, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Download, Document, Search } from '@element-plus/icons-vue'
+import { Download, Document, Search, FolderOpened, Files } from '@element-plus/icons-vue'
 import { getGenomeVisualization } from '@/api/visualization'
+import { getDownloadableFiles, downloadFile } from '@/api/download'
+import { useUserStore } from '@/stores/user'
 import * as echarts from 'echarts'
 
 const route = useRoute()
 const router = useRouter()
+const userStore = useUserStore()
 
 // 状态管理
 const taskId = ref(null)
 const activeTab = ref('detail')
 const loading = ref(false)
 const argData = ref(null)
+
+// 下载相关状态
+const downloadLoading = ref(false)
+const downloadFiles = ref({})
+const isMagTask = ref(false)
+const downloading = reactive({
+  arg: false,
+  merged: false,
+  prodigal: false,
+  all: false
+})
 
 // 图表 ref
 const pieChartRef = ref(null)
@@ -338,12 +438,58 @@ async function loadData() {
     const response = await getGenomeVisualization(taskId.value)
     argData.value = response.data
     
+    // 加载可下载文件列表
+    await loadDownloadableFiles()
+    
     ElMessage.success('数据加载成功')
   } catch (error) {
     console.error('加载数据失败:', error)
     ElMessage.error('加载数据失败: ' + (error.response?.data?.message || error.message))
   } finally {
     loading.value = false
+  }
+}
+
+// 加载可下载文件列表
+async function loadDownloadableFiles() {
+  downloadLoading.value = true
+  try {
+    const response = await getDownloadableFiles(taskId.value)
+    // response 是 { code: 0, data: { taskId, isMagTask, files } }
+    const data = response.data || response
+    isMagTask.value = data.isMagTask || false
+    
+    // 整理文件信息
+    const files = data.files || []
+    downloadFiles.value = {}
+    files.forEach(file => {
+      if (file.key === 'arg_predictions') {
+        downloadFiles.value.arg = file
+      } else if (file.key === 'merged_faa') {
+        downloadFiles.value.merged = file
+      } else if (file.key === 'prodigal_results') {
+        downloadFiles.value.prodigal = file
+      }
+    })
+  } catch (error) {
+    console.error('加载下载文件列表失败:', error)
+  } finally {
+    downloadLoading.value = false
+  }
+}
+
+// 处理下载
+async function handleDownload(type) {
+  downloading[type] = true
+  try {
+    const token = userStore.token ? `Bearer ${userStore.token}` : ''
+    await downloadFile(type, taskId.value, token)
+    ElMessage.success('下载成功')
+  } catch (error) {
+    console.error('下载失败:', error)
+    ElMessage.error('下载失败: ' + error.message)
+  } finally {
+    downloading[type] = false
   }
 }
 
@@ -776,6 +922,92 @@ h3, h4, h5 {
 
 .tabs-card {
   margin-top: 20px;
+}
+
+/* 下载卡片样式 */
+.download-card {
+  margin-top: 20px;
+}
+
+.download-card .card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #0088cc;
+}
+
+.download-card .card-header .el-icon {
+  font-size: 18px;
+}
+
+.download-content {
+  padding: 10px 0;
+}
+
+.download-items {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.download-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: rgba(0, 136, 204, 0.03);
+  border: 1px solid rgba(0, 136, 204, 0.15);
+  border-radius: 8px;
+  transition: all 0.3s ease;
+}
+
+.download-item:hover {
+  background: rgba(0, 136, 204, 0.08);
+  border-color: rgba(0, 136, 204, 0.25);
+}
+
+.download-item.download-all {
+  background: rgba(64, 158, 255, 0.05);
+  border-color: rgba(64, 158, 255, 0.2);
+}
+
+.download-item.download-all:hover {
+  background: rgba(64, 158, 255, 0.1);
+  border-color: rgba(64, 158, 255, 0.3);
+}
+
+.download-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.download-info .file-icon {
+  font-size: 32px;
+  color: #0088cc;
+}
+
+.file-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-details .file-name {
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.file-details .file-desc {
+  color: #606266;
+  font-size: 12px;
+}
+
+.file-details .file-size {
+  color: #909399;
+  font-size: 11px;
 }
 
 .detail-content {
