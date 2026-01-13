@@ -37,7 +37,7 @@
         
         <el-menu-item index="/introduction">
           <el-icon><InfoFilled /></el-icon>
-          <span>项目介绍</span>
+          <span>平台介绍</span>
         </el-menu-item>
 
 
