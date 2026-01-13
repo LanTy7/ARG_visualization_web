@@ -151,6 +151,7 @@ public class VisualizationServiceImpl implements VisualizationService {
     
     /**
      * 从指定文件解析 ARG 预测结果
+     * TSV 格式: id, is_arg, binary_prob, arg_class, class_prob, top_classes
      */
     private List<Map<String, Object>> parseArgResultsListFromFile(Path argFile) throws IOException {
         List<Map<String, Object>> results = new ArrayList<>();
@@ -158,6 +159,7 @@ public class VisualizationServiceImpl implements VisualizationService {
         try (BufferedReader reader = Files.newBufferedReader(argFile)) {
             String line;
             String[] headers = null;
+            Map<String, Integer> headerIndex = new HashMap<>();
             int index = 1;
             
             while ((line = reader.readLine()) != null) {
@@ -166,24 +168,57 @@ public class VisualizationServiceImpl implements VisualizationService {
                     continue;
                 }
                 
-                String[] values = line.split("\t");
+                String[] values = line.split("\t", -1); // -1 保留尾部空字符串
                 
-                // 第一行是表头
+                // 第一行是表头，建立索引映射
                 if (headers == null) {
                     headers = values;
+                    for (int i = 0; i < headers.length; i++) {
+                        headerIndex.put(headers[i].toLowerCase().trim(), i);
+                    }
+                    log.debug("TSV 表头: {}", Arrays.toString(headers));
                     continue;
                 }
                 
                 // 解析数据行
-                // 格式: id, is_arg, pred_prob, arg_class, class_prob, prob
                 Map<String, Object> result = new HashMap<>();
                 result.put("index", index++);
-                result.put("id", values.length > 0 ? values[0] : "");
-                result.put("isArg", values.length > 1 ? "True".equalsIgnoreCase(values[1]) : false);
-                result.put("predProb", values.length > 2 && !values[2].isEmpty() ? parseDouble(values[2]) : null);
-                result.put("argClass", values.length > 3 ? values[3] : "");
-                result.put("classProb", values.length > 4 && !values[4].isEmpty() ? parseDouble(values[4]) : null);
-                result.put("prob", values.length > 5 && !values[5].isEmpty() ? parseDouble(values[5]) : null);
+                     
+                // 根据表头动态解析
+                result.put("id", getValueByHeader(values, headerIndex, "id", ""));
+                result.put("isArg", "True".equalsIgnoreCase(getValueByHeader(values, headerIndex, "is_arg", "false")));
+                result.put("predProb", parseDouble(getValueByHeader(values, headerIndex, "binary_prob", null)));
+                result.put("argClass", getValueByHeader(values, headerIndex, "arg_class", ""));
+                result.put("classProb", parseDouble(getValueByHeader(values, headerIndex, "class_prob", null)));
+                
+                // 解析 top_classes JSON 字段（新增）
+                String topClassesJson = getValueByHeader(values, headerIndex, "top_classes", null);
+                if (topClassesJson != null && !topClassesJson.isEmpty() && !"null".equalsIgnoreCase(topClassesJson)) {
+                    try {
+                        // 处理 pandas 导出的 CSV/TSV 格式：外层有引号，内部引号被转义为 ""
+                        String cleanJson = topClassesJson;
+                        // 去掉外层引号（如果有）
+                        if (cleanJson.startsWith("\"") && cleanJson.endsWith("\"")) {
+                            cleanJson = cleanJson.substring(1, cleanJson.length() - 1);
+                        }
+                        // 将转义的双引号 "" 替换为 "
+                        cleanJson = cleanJson.replace("\"\"", "\"");
+                        // 去掉首尾的转义残留（如果存在）
+                        cleanJson = cleanJson.trim();
+                            
+                        // 解析 JSON 数组
+                        List<Map<String, Object>> topClasses = objectMapper.readValue(
+                            cleanJson, 
+                            objectMapper.getTypeFactory().constructCollectionType(List.class, Map.class)
+                        );
+                        result.put("topClasses", topClasses);
+                    } catch (Exception e) {
+                        log.warn("解析 top_classes JSON 失败: {}", topClassesJson, e);
+                        result.put("topClasses", null);
+                    }
+                } else {
+                    result.put("topClasses", null);
+                }
                 
                 results.add(result);
             }
@@ -191,6 +226,20 @@ public class VisualizationServiceImpl implements VisualizationService {
         
         log.info("解析到 {} 个 ARG 预测结果", results.size());
         return results;
+    }
+    
+    /**
+     * 根据表头名称获取值
+     */
+    private String getValueByHeader(String[] values, Map<String, Integer> headerIndex, String headerName, String defaultValue) {
+        Integer idx = headerIndex.get(headerName.toLowerCase());
+        if (idx != null && idx < values.length) {
+            String value = values[idx];
+            if (value != null && !value.trim().isEmpty()) {
+                return value.trim(); 
+            }
+        }
+        return defaultValue;
     }
     
     /**

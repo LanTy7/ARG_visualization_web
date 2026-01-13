@@ -122,9 +122,47 @@
                       <span v-else style="color: #999;">-</span>
                     </template>
                   </el-table-column>
-                  <el-table-column prop="argClass" label="ARG 分类" width="150" align="center">
+                  <el-table-column prop="argClass" label="ARG 分类" width="180" align="center">
                     <template #default="{ row }">
-                      <el-tag v-if="row.argClass" type="info" size="small">
+                      <!-- 有 Top-5 数据时显示悬停弹窗 -->
+                      <el-popover
+                        v-if="row.argClass && row.topClasses && row.topClasses.length > 0"
+                        placement="top"
+                        :width="300"
+                        trigger="hover"
+                        popper-class="top-classes-popover"
+                      >
+                        <template #reference>
+                          <el-tag type="info" size="small" class="arg-class-tag">
+                            {{ row.argClass }}
+                            <el-icon class="info-icon"><InfoFilled /></el-icon>
+                          </el-tag>
+                        </template>
+                        
+                        <!-- 弹窗内容：Top-5 分类 -->
+                        <div class="top-classes-content">
+                          <div class="popover-title">分类概率分布 (Top 5)</div>
+                          <div 
+                            v-for="(item, idx) in row.topClasses" 
+                            :key="idx"
+                            :class="['top-class-item', { 'top-class-first': idx === 0 }]"
+                          >
+                            <span class="rank">{{ idx + 1 }}.</span>
+                            <span class="class-name">{{ item.class }}</span>
+                            <el-progress 
+                              :percentage="item.prob * 100" 
+                              :stroke-width="10"
+                              :show-text="false"
+                              :color="getProgressColor(item.prob * 100)"
+                              style="width: 80px; margin: 0 8px;"
+                            />
+                            <span class="prob-value">{{ (item.prob * 100).toFixed(1) }}%</span>
+                          </div>
+                        </div>
+                      </el-popover>
+                      
+                      <!-- 没有 Top-5 数据时普通显示 -->
+                      <el-tag v-else-if="row.argClass" type="info" size="small">
                         {{ row.argClass }}
                       </el-tag>
                       <span v-else style="color: #999;">-</span>
@@ -136,6 +174,21 @@
                         {{ (row.classProb * 100).toFixed(2) }}%
                       </span>
                       <span v-else style="color: #999;">-</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="BLAST" width="100" align="center" fixed="right">
+                    <template #default="{ row }">
+                      <el-button
+                        v-if="row.isArg"
+                        type="primary"
+                        size="small"
+                        :icon="Search"
+                        @click="handleBlast(row)"
+                        class="blast-btn"
+                      >
+                        BLAST
+                      </el-button>
+                      <span v-else style="color: #ccc;">-</span>
                     </template>
                   </el-table-column>
                 </el-table>
@@ -275,6 +328,14 @@
         </div>
       </el-card>
     </template>
+    
+    <!-- BLAST 结果抽屉 -->
+    <BlastDrawer
+      v-model="blastDrawerVisible"
+      :task-id="taskId"
+      :sequence-id="currentBlastSequenceId"
+      :arg-class="currentBlastArgClass"
+    />
   </div>
 </template>
 
@@ -282,11 +343,12 @@
 import { ref, reactive, computed, onMounted, watch, nextTick, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Download, Document, Search, FolderOpened, Files } from '@element-plus/icons-vue'
+import { Download, Document, Search, FolderOpened, Files, InfoFilled } from '@element-plus/icons-vue'
 import { getGenomeVisualization } from '@/api/visualization'
 import { getDownloadableFiles, downloadFile } from '@/api/download'
 import { useUserStore } from '@/stores/user'
 import * as echarts from 'echarts'
+import BlastDrawer from '@/components/BlastDrawer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -308,6 +370,11 @@ const downloading = reactive({
   prodigal: false,
   all: false
 })
+
+// BLAST 相关状态
+const blastDrawerVisible = ref(false)
+const currentBlastSequenceId = ref('')
+const currentBlastArgClass = ref('')
 
 // 图表 ref
 const pieChartRef = ref(null)
@@ -418,6 +485,28 @@ function handleSearch() {
 // 处理筛选
 function handleFilter() {
   pagination.currentPage = 1 // 筛选时重置到第一页
+}
+
+// 处理 BLAST 比对
+function handleBlast(row) {
+  currentBlastSequenceId.value = row.id
+  currentBlastArgClass.value = row.argClass || ''
+  blastDrawerVisible.value = true
+}
+
+// 格式化概率（与预测概率一致，保留两位小数）
+function formatProb(prob) {
+  const num = Number(prob)
+  if (Number.isNaN(num)) return '-'
+  return (num * 100).toFixed(2)
+}
+
+// 获取进度条颜色（根据概率值）
+function getProgressColor(percentage) {
+  if (percentage >= 70) return '#67C23A'  // 绿色 - 高置信度
+  if (percentage >= 50) return '#409EFF'  // 蓝色 - 中置信度
+  if (percentage >= 30) return '#E6A23C'  // 橙色 - 低置信度
+  return '#909399'  // 灰色 - 很低置信度
 }
 
 // 处理页码变化
@@ -1075,6 +1164,122 @@ h3 {
 
 :deep(.arg-row-negative > td.el-table__cell) {
   background-color: #E4E7ED !important;  /* 灰色 - 不是抗性基因 */
+}
+
+/* BLAST 按钮样式 */
+.blast-btn {
+  background: linear-gradient(135deg, #0088cc 0%, #00b4ff 100%);
+  border: none;
+  font-weight: 500;
+  padding: 4px 10px;
+  transition: all 0.3s ease;
+}
+
+.blast-btn:hover {
+  background: linear-gradient(135deg, #0077b3 0%, #0099dd 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 136, 204, 0.3);
+}
+
+.blast-btn:active {
+  transform: translateY(0);
+}
+
+/* ARG 分类标签样式 */
+.arg-class-tag {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.arg-class-tag:hover {
+  background-color: rgba(0, 136, 204, 0.15);
+  border-color: #0088cc;
+}
+
+.arg-class-tag .info-icon {
+  font-size: 12px;
+  color: #909399;
+  transition: color 0.2s ease;
+}
+
+.arg-class-tag:hover .info-icon {
+  color: #0088cc;
+}
+
+/* Top-5 分类弹窗样式 */
+.top-classes-content {
+  padding: 4px 0;
+}
+
+.top-classes-content .popover-title {
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ebeef5;
+  font-size: 14px;
+}
+
+.top-classes-content .top-class-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.top-classes-content .top-class-item:hover {
+  background-color: rgba(0, 136, 204, 0.05);
+}
+
+.top-classes-content .top-class-first {
+  background: linear-gradient(135deg, rgba(103, 194, 58, 0.1) 0%, rgba(103, 194, 58, 0.15) 100%);
+  border-left: 3px solid #67C23A;
+  margin-left: -4px;
+  padding-left: 8px;
+}
+
+.top-classes-content .rank {
+  width: 24px;
+  color: #909399;
+  font-weight: 500;
+  font-size: 13px;
+}
+
+.top-classes-content .class-name {
+  flex: 1;
+  font-size: 13px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.top-classes-content .top-class-first .class-name {
+  color: #67C23A;
+  font-weight: 600;
+}
+
+.top-classes-content .prob-value {
+  width: 50px;
+  text-align: right;
+  font-family: 'Monaco', 'Menlo', monospace;
+  color: #409EFF;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.top-classes-content .top-class-first .prob-value {
+  color: #67C23A;
+}
+
+/* 分类概率文本样式 */
+.class-prob-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #409EFF;
 }
 
 /* 表格工具栏样式 */

@@ -70,7 +70,7 @@ docker:
   command-prefix: ${DOCKER_COMMAND_PREFIX:}
   # ARG 配置
   arg:
-    image-name: ${ARG_IMAGE:arg-bilstm:gpu}
+    image-name: ${ARG_IMAGE:arg-bilstm:1.1-gpu}
     model-path: ${ARG_MODEL_PATH:/app/models}
     input-mount: ${ARG_INPUT_MOUNT:/input}
     output-mount: ${ARG_OUTPUT_MOUNT:/output}
@@ -87,3 +87,12 @@ analysis:
   output-dir: ${ANALYSIS_OUTPUT_HOST_PATH:/home/data/outputs}
   timeout: 3600
   queue-size: 100
+
+# BLAST 比对配置
+blast:
+  enabled: ${BLAST_ENABLED:true}
+  db-path: ${BLAST_DB_PATH:/home/lanty/Documents/study/intership_project/ARG_whole_project/blast_db/db/ARGNet_DB}
+  image-name: ${BLAST_IMAGE:ncbi/blast:latest}
+  evalue: ${BLAST_EVALUE:1e-5}
+  max-hits: ${BLAST_MAX_HITS:10}
+  threads: ${BLAST_THREADS:4}
